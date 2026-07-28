@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
+using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -19,10 +20,11 @@ namespace TurboWallpaper
         [STAThread]
         private static void Main(string[] args)
         {
-            using (var single = new System.Threading.Mutex(true, "Turbowallpaper.TurboWallpaper.SingleInstance", out var isFirst))
+            using (var single = new Mutex(true, "Turbowallpaper.TurboWallpaper.SingleInstance", out var isFirst))
             {
                 if (!isFirst)
                 {
+                    MessageSender.NotifyExistingInstance(args);
                     return;
                 }
 
@@ -34,6 +36,12 @@ namespace TurboWallpaper
 
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
+                if (Array.Exists(args, a => a.Equals("--setup", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Application.Run(new SetupWizardForm());
+                    return;
+                }
+
                 Application.Run(new WallpaperApplicationContext(args));
             }
         }
@@ -44,6 +52,8 @@ namespace TurboWallpaper
         private readonly NotifyIcon trayIcon;
         private readonly System.Windows.Forms.Timer memoryTrimTimer;
         private WallpaperForm wallpaperForm;
+        private SettingsForm settingsForm;
+        private readonly EventHandler settingsRequestedHandler;
 
         public WallpaperApplicationContext(string[] args)
         {
@@ -56,13 +66,16 @@ namespace TurboWallpaper
                 ContextMenuStrip = CreateMenu()
             };
             trayIcon.DoubleClick += (_, __) => ShowSettings();
+            settingsRequestedHandler = (_, __) => ShowSettings();
+            MessageSender.SettingsRequested += settingsRequestedHandler;
 
             memoryTrimTimer = new System.Windows.Forms.Timer { Interval = 60000 };
             memoryTrimTimer.Tick += (_, __) => NativeMethods.TrimWorkingSet();
             memoryTrimTimer.Start();
 
             var config = WallpaperConfig.Load();
-            if (args.Length == 0 || Array.Exists(args, a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
+            var backgroundOnly = Array.Exists(args, a => a.Equals("--background", StringComparison.OrdinalIgnoreCase));
+            if (!backgroundOnly && (args.Length == 0 || Array.Exists(args, a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase))))
             {
                 ShowSettings();
             }
@@ -85,14 +98,21 @@ namespace TurboWallpaper
 
         private void ShowSettings()
         {
-            using (var settings = new SettingsForm())
+            if (settingsForm != null && !settingsForm.IsDisposed)
             {
-                if (settings.ShowDialog() == DialogResult.OK)
-                {
-                    var config = WallpaperConfig.Load();
-                    StartupManager.SetEnabled(config.StartWithWindows);
-                    StartWallpaper(config);
-                }
+                settingsForm.Show();
+                settingsForm.WindowState = FormWindowState.Normal;
+                settingsForm.Activate();
+                return;
+            }
+
+            settingsForm = new SettingsForm();
+            settingsForm.FormClosed += (_, __) => settingsForm = null;
+            if (settingsForm.ShowDialog() == DialogResult.OK)
+            {
+                var config = WallpaperConfig.Load();
+                StartupManager.SetEnabled(config.StartWithWindows);
+                StartWallpaper(config);
             }
         }
 
@@ -116,6 +136,7 @@ namespace TurboWallpaper
             memoryTrimTimer.Stop();
             memoryTrimTimer.Dispose();
             trayIcon.Dispose();
+            MessageSender.SettingsRequested -= settingsRequestedHandler;
             wallpaperForm?.Close();
             wallpaperForm?.Dispose();
             base.ExitThreadCore();
@@ -135,11 +156,11 @@ namespace TurboWallpaper
         {
             Text = "TurboWallpaper Settings";
             Width = 660;
-            Height = 410;
+            Height = 465;
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
-            MinimizeBox = false;
+            MinimizeBox = true;
 
             var config = WallpaperConfig.Load();
             Controls.Add(new Label { Text = "TurboWallpaper™", Font = new Font("Segoe UI", 16, FontStyle.Bold), Left = 20, Top = 16, Width = 360 });
@@ -187,11 +208,16 @@ namespace TurboWallpaper
             library.Click += (_, __) => Process.Start("explorer.exe", AppPaths.LibraryDir);
             Controls.Add(library);
 
-            var save = new Button { Text = "Save && run", Left = 400, Top = 302, Width = 105, Height = 32 };
+            var copy = new Button { Text = "Copy to library", Left = 400, Top = 302, Width = 105, Height = 32 };
+            copy.Click += (_, __) => CopyCurrentWallpaperToLibrary();
+            Controls.Add(copy);
+
+            var save = new Button { Text = "Save && run", Left = 510, Top = 302, Width = 105, Height = 32 };
             save.Click += (_, __) => SaveAndClose();
             Controls.Add(save);
 
-            Controls.Add(new Label { Text = "© 2026 Turbowallpaper™. All rights reserved.", Left = 20, Top = 338, Width = 360 });
+            Controls.Add(new Label { Text = "Close or minimize this window any time; the wallpaper keeps running in the tray.", Left = 20, Top = 348, Width = 590 });
+            Controls.Add(new Label { Text = "© 2026 Turbowallpaper™. All rights reserved.", Left = 20, Top = 382, Width = 360 });
         }
 
         private void SelectWallpaper()
@@ -208,6 +234,31 @@ namespace TurboWallpaper
             }
         }
 
+        private void CopyCurrentWallpaperToLibrary()
+        {
+            var source = wallpaperPath.Text.Trim();
+            if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
+            {
+                MessageBox.Show(this, "Select a valid wallpaper file first.", "TurboWallpaper", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            AppPaths.EnsureFolders();
+            var destination = Path.Combine(AppPaths.LibraryDir, Path.GetFileName(source));
+            File.Copy(source, destination, true);
+            wallpaperPath.Text = destination;
+            MessageBox.Show(this, "Wallpaper copied to the local library.", "TurboWallpaper", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (WindowState == FormWindowState.Minimized)
+            {
+                Hide();
+            }
+        }
+
         private void SaveAndClose()
         {
             var config = new WallpaperConfig
@@ -217,7 +268,8 @@ namespace TurboWallpaper
                 Resolution = Convert.ToString(resolution.SelectedItem) ?? "Auto",
                 EffectMode = Convert.ToString(effectMode.SelectedItem) ?? "None",
                 UpscaleLowResolutionVideo = upscaleLowResolutionVideo.Checked,
-                StartWithWindows = startWithWindows.Checked
+                StartWithWindows = startWithWindows.Checked,
+                LibraryDir = AppPaths.LibraryDir
             };
             config.Save();
             DialogResult = DialogResult.OK;
@@ -266,6 +318,13 @@ namespace TurboWallpaper
                 SizeMode = ImageSizeMode(config.ScaleMode),
                 ImageLocation = config.WallpaperPath
             };
+            FormClosed += (_, __) =>
+            {
+                var image = picture.Image;
+                picture.ImageLocation = null;
+                picture.Dispose();
+                image?.Dispose();
+            };
             Controls.Add(picture);
         }
 
@@ -273,8 +332,8 @@ namespace TurboWallpaper
         {
             var desktop = NativeMethods.GetWorkerW();
             NativeMethods.SetParent(Handle, desktop);
-            NativeMethods.SetWindowLong(Handle, NativeMethods.GWL_EXSTYLE, NativeMethods.GetWindowLong(Handle, NativeMethods.GWL_EXSTYLE) | NativeMethods.WS_EX_TOOLWINDOW);
-            NativeMethods.SetWindowPos(Handle, IntPtr.Zero, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height, NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            NativeMethods.SetWindowLong(Handle, NativeMethods.GWL_EXSTYLE, NativeMethods.GetWindowLong(Handle, NativeMethods.GWL_EXSTYLE) | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
+            NativeMethods.SetWindowPos(Handle, NativeMethods.HWND_BOTTOM, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height, NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
         }
 
         protected override void WndProc(ref Message m)
@@ -330,6 +389,51 @@ namespace TurboWallpaper
         }
     }
 
+
+    internal static class MessageSender
+    {
+        public static event EventHandler SettingsRequested;
+
+        public static void NotifyExistingInstance(string[] args)
+        {
+            if (Array.Exists(args, a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)) || args.Length == 0)
+            {
+                SettingsRequested?.Invoke(null, EventArgs.Empty);
+            }
+        }
+    }
+
+    internal sealed class SetupWizardForm : Form
+    {
+        public SetupWizardForm()
+        {
+            Text = "TurboWallpaper Setup";
+            Width = 560;
+            Height = 260;
+            StartPosition = FormStartPosition.CenterScreen;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+
+            Controls.Add(new Label { Text = "TurboWallpaper setup", Font = new Font("Segoe UI", 16, FontStyle.Bold), Left = 20, Top = 18, Width = 360 });
+            Controls.Add(new Label { Text = "Install the executable app, create shortcuts, and choose where downloaded wallpaper files are stored.", Left = 20, Top = 60, Width = 500 });
+
+            var install = new TextBox { Left = 20, Top = 100, Width = 390, Text = AppPaths.AppDir };
+            var browse = new Button { Text = "Install folder...", Left = 420, Top = 98, Width = 100 };
+            browse.Click += (_, __) => { using (var d = new FolderBrowserDialog()) { d.SelectedPath = install.Text; if (d.ShowDialog(this) == DialogResult.OK) install.Text = d.SelectedPath; } };
+            Controls.Add(install);
+            Controls.Add(browse);
+
+            var run = new Button { Text = "Open installer script", Left = 340, Top = 150, Width = 180, Height = 32 };
+            run.Click += (_, __) =>
+            {
+                AppPaths.EnsureFolders();
+                Process.Start("explorer.exe", AppPaths.AppDir);
+                MessageBox.Show(this, "Use setup\\TurboWallpaper-Setup-GUI.ps1 from the downloaded source to install to a custom folder. The app library is ready at " + AppPaths.LibraryDir, "TurboWallpaper Setup");
+            };
+            Controls.Add(run);
+        }
+    }
+
     [DataContract]
     internal sealed class WallpaperConfig
     {
@@ -339,6 +443,7 @@ namespace TurboWallpaper
         [DataMember] public string EffectMode { get; set; } = "None";
         [DataMember] public bool UpscaleLowResolutionVideo { get; set; } = true;
         [DataMember] public bool StartWithWindows { get; set; }
+        [DataMember] public string LibraryDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurboWallpaper", "Library");
 
         public static WallpaperConfig Load()
         {
@@ -374,8 +479,37 @@ namespace TurboWallpaper
 
     internal static class AppPaths
     {
-        public static readonly string AppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurboWallpaper");
-        public static readonly string LibraryDir = Path.Combine(AppDir, "Library");
+        public static readonly string AppDir = Path.GetDirectoryName(Application.ExecutablePath) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TurboWallpaper");
+        public static string LibraryDir
+        {
+            get
+            {
+                try
+                {
+                    if (File.Exists(ConfigPath))
+                    {
+                        var json = File.ReadAllText(ConfigPath);
+                        var marker = "\"LibraryDir\":\"";
+                        var start = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                        if (start >= 0)
+                        {
+                            start += marker.Length;
+                            var end = json.IndexOf("\"", start, StringComparison.Ordinal);
+                            if (end > start)
+                            {
+                                return json.Substring(start, end - start).Replace("\\\\", "\\");
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fall back to the default local library.
+                }
+
+                return Path.Combine(AppDir, "Library");
+            }
+        }
         public static readonly string ConfigPath = Path.Combine(AppDir, "config.json");
         public static readonly string ExePath = Application.ExecutablePath;
         public static readonly string StartupShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "TurboWallpaper.lnk");
@@ -416,7 +550,7 @@ namespace TurboWallpaper
     {
         public static Rectangle For(string resolution)
         {
-            var screen = Screen.PrimaryScreen.Bounds;
+            var screen = SystemInformation.VirtualScreen;
             if (string.IsNullOrWhiteSpace(resolution) || resolution == "Auto")
             {
                 return screen;
@@ -467,6 +601,8 @@ namespace TurboWallpaper
         public const uint SWP_SHOWWINDOW = 0x0040;
         public const int GWL_EXSTYLE = -20;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WS_EX_NOACTIVATE = 0x08000000;
+        public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
         public const int WM_DISPLAYCHANGE = 0x007E;
         private static IntPtr workerW = IntPtr.Zero;
 

@@ -1,12 +1,16 @@
 # Copyright (c) 2026 Turbowallpaper. All rights reserved.
 # Installer for the TurboWallpaper native Windows executable.
 
+param(
+    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'TurboWallpaper'),
+    [string]$LibraryDir = (Join-Path (Join-Path $env:LOCALAPPDATA 'TurboWallpaper') 'Library'),
+    [switch]$StartWithWindows
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $AppName = 'TurboWallpaper'
-$InstallDir = Join-Path $env:LOCALAPPDATA $AppName
-$LibraryDir = Join-Path $InstallDir 'Library'
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $Project = Join-Path $SourceRoot 'src\TurboWallpaper\TurboWallpaper.csproj'
 $PublishedDir = Join-Path $SourceRoot 'dist\TurboWallpaper'
@@ -75,4 +79,12 @@ foreach ($shortcutPath in @($DesktopShortcut, $StartMenuShortcut)) {
 
 Write-Host 'TurboWallpaper executable installed successfully.'
 Write-Host "Install location: $InstallDir"
+$ConfigPath = Join-Path $InstallDir 'config.json'
+if (-not (Test-Path $ConfigPath)) {
+    $initialConfig = [ordered]@{ WallpaperPath = ''; Resolution = 'Auto'; ScaleMode = 'Fill'; EffectMode = 'None'; UpscaleLowResolutionVideo = $true; StartWithWindows = [bool]$StartWithWindows; LibraryDir = $LibraryDir }
+    $initialConfig | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
+}
+if ($StartWithWindows) {
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $AppName -Value ('"' + $TargetExe + '" --background')
+}
 Write-Host 'Use the desktop or Start Menu shortcut to select a wallpaper and enable tray startup.'

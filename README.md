@@ -7,13 +7,13 @@ Copyright © 2026 Turbowallpaper™. All rights reserved.
 ## Features
 
 - Native Windows executable instead of a command-line PowerShell runner.
-- Tray-first behavior: closing the settings window keeps the app alive in the tray; use the tray menu to open settings, restart the wallpaper, open the library, or exit.
-- Places the wallpaper on the Windows WorkerW desktop layer so desktop icons, the taskbar, Start menu, and application windows stay above it.
+- Tray-first behavior: startup can run directly in the background, and closing or minimizing the settings window keeps the wallpaper alive in the notification tray; use the tray menu to open settings, restart the wallpaper, open the library, or exit.
+- Places the wallpaper on the Windows WorkerW desktop layer with a no-activate, bottom-positioned window so desktop icons, the taskbar, Start menu, and application windows stay above it without changing taskbar auto-hide settings.
 - Select wallpaper files from a local library or any folder.
 - Supports `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.mp4`, and `.wmv`.
 - Keeps the existing upscaling/effect features for low-resolution video: browser smoothing, vivid/cinema/glow modes, resolution presets, and scale/aspect controls.
 - Uses built-in .NET WinForms and Windows media/browser components to avoid bundling a heavy runtime.
-- Starts with Windows through the current-user Run registry key as a background tray app when enabled.
+- Starts with Windows through the current-user Run registry key as a minimized background tray app when enabled.
 - Installer and uninstaller clean up files from the older PowerShell architecture if they are present.
 
 > Performance depends on the selected media file, decoder, resolution, and Windows version. Static images are the lightest. Well-encoded 1080p H.264 MP4 files usually provide the best live-video balance. Very large GIFs or 4K videos can exceed the 30 MB / 1-2% CPU target because Windows decoders allocate memory and GPU resources outside the app process.
@@ -28,16 +28,16 @@ Copyright © 2026 Turbowallpaper™. All rights reserved.
 ## Install
 
 1. Download or clone this repository.
-2. Double-click `setup\Setup-TurboWallpaper.cmd`, or run the PowerShell installer manually:
+2. Double-click `setup\Setup-TurboWallpaper.cmd` for the graphical setup wizard. The wizard lets you choose the app install folder, the local wallpaper library/download folder, and whether TurboWallpaper should start with Windows. You can also run the PowerShell installer manually:
 
    ```powershell
-   .\setup\Install-TurboWallpaper.ps1
+   .\setup\Install-TurboWallpaper.ps1 -InstallDir "$env:LOCALAPPDATA\TurboWallpaper" -LibraryDir "$env:LOCALAPPDATA\TurboWallpaper\Library"
    ```
 
    The installer publishes `src\TurboWallpaper\TurboWallpaper.csproj` if `dist\TurboWallpaper\TurboWallpaper.exe` does not already exist.
 
 3. Open **TurboWallpaper** from the desktop or Start Menu shortcut.
-4. Click **Open library** to add wallpaper files to `%LOCALAPPDATA%\TurboWallpaper\Library`, or click **Select** to choose any supported file.
+4. Click **Open library** to add wallpaper files to the configured library folder, click **Copy to library** to keep a selected file local, or click **Select** to choose any supported file.
 5. Pick a scale/aspect mode:
    - **Fill**: optimized default that preserves aspect ratio and fills the screen.
    - **Fit**: preserves aspect ratio and shows the entire file.
@@ -90,7 +90,8 @@ You can also run `TurboWallpaper.exe --uninstall` from the install directory. Th
 
 - `src/TurboWallpaper/Program.cs` - native tray app, settings UI, live wallpaper host, startup manager, and executable uninstaller entry point.
 - `src/TurboWallpaper/TurboWallpaper.csproj` - Windows executable project.
-- `setup/Setup-TurboWallpaper.cmd` - one-click setup launcher.
+- `setup/Setup-TurboWallpaper.cmd` - one-click graphical setup launcher.
+- `setup/TurboWallpaper-Setup-GUI.ps1` - Windows Forms setup wizard for choosing install and wallpaper library folders.
 - `setup/Install-TurboWallpaper.ps1` - setup script that builds/copies the executable and shortcuts while removing legacy script artifacts.
 - `setup/Uninstall-TurboWallpaper.ps1` - uninstaller that removes executable and legacy installs.
 - `setup/TurboWallpaper.iss` - optional Inno Setup definition for a packaged installer.
