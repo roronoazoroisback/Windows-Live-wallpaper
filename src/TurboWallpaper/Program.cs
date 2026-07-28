@@ -26,6 +26,12 @@ namespace TurboWallpaper
                     return;
                 }
 
+                if (Array.Exists(args, a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Uninstaller.RunAndExit();
+                    return;
+                }
+
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new WallpaperApplicationContext(args));
@@ -36,6 +42,7 @@ namespace TurboWallpaper
     internal sealed class WallpaperApplicationContext : ApplicationContext
     {
         private readonly NotifyIcon trayIcon;
+        private readonly System.Windows.Forms.Timer memoryTrimTimer;
         private WallpaperForm wallpaperForm;
 
         public WallpaperApplicationContext(string[] args)
@@ -49,6 +56,10 @@ namespace TurboWallpaper
                 ContextMenuStrip = CreateMenu()
             };
             trayIcon.DoubleClick += (_, __) => ShowSettings();
+
+            memoryTrimTimer = new System.Windows.Forms.Timer { Interval = 60000 };
+            memoryTrimTimer.Tick += (_, __) => NativeMethods.TrimWorkingSet();
+            memoryTrimTimer.Start();
 
             var config = WallpaperConfig.Load();
             if (args.Length == 0 || Array.Exists(args, a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
@@ -102,6 +113,8 @@ namespace TurboWallpaper
         protected override void ExitThreadCore()
         {
             trayIcon.Visible = false;
+            memoryTrimTimer.Stop();
+            memoryTrimTimer.Dispose();
             trayIcon.Dispose();
             wallpaperForm?.Close();
             wallpaperForm?.Dispose();
@@ -260,7 +273,19 @@ namespace TurboWallpaper
         {
             var desktop = NativeMethods.GetWorkerW();
             NativeMethods.SetParent(Handle, desktop);
+            NativeMethods.SetWindowLong(Handle, NativeMethods.GWL_EXSTYLE, NativeMethods.GetWindowLong(Handle, NativeMethods.GWL_EXSTYLE) | NativeMethods.WS_EX_TOOLWINDOW);
             NativeMethods.SetWindowPos(Handle, IntPtr.Zero, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height, NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == NativeMethods.WM_DISPLAYCHANGE)
+            {
+                Bounds = DisplayBounds.For(config.Resolution);
+                SendBehindDesktopIcons();
+            }
+
+            base.WndProc(ref m);
         }
 
         private static PictureBoxSizeMode ImageSizeMode(string scaleMode)
@@ -353,6 +378,7 @@ namespace TurboWallpaper
         public static readonly string LibraryDir = Path.Combine(AppDir, "Library");
         public static readonly string ConfigPath = Path.Combine(AppDir, "config.json");
         public static readonly string ExePath = Application.ExecutablePath;
+        public static readonly string StartupShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "TurboWallpaper.lnk");
 
         public static void EnsureFolders()
         {
@@ -377,6 +403,11 @@ namespace TurboWallpaper
                 {
                     key?.DeleteValue("TurboWallpaper", false);
                 }
+            }
+
+            if (!enabled && File.Exists(AppPaths.StartupShortcut))
+            {
+                File.Delete(AppPaths.StartupShortcut);
             }
         }
     }
@@ -405,10 +436,38 @@ namespace TurboWallpaper
         }
     }
 
+    internal static class Uninstaller
+    {
+        public static void RunAndExit()
+        {
+            var script = Path.Combine(Path.GetTempPath(), "TurboWallpaper-Uninstall.cmd");
+            var appDir = AppPaths.AppDir;
+            var desktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "TurboWallpaper.lnk");
+            var startMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "TurboWallpaper");
+            var commands = string.Join(Environment.NewLine, new[]
+            {
+                "@echo off",
+                "timeout /t 1 /nobreak >nul",
+                "taskkill /IM TurboWallpaper.exe /F >nul 2>nul",
+                "reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v TurboWallpaper /f >nul 2>nul",
+                "del /f /q \"" + desktopShortcut + "\" >nul 2>nul",
+                "del /f /q \"" + AppPaths.StartupShortcut + "\" >nul 2>nul",
+                "rmdir /s /q \"" + startMenuDir + "\" >nul 2>nul",
+                "rmdir /s /q \"" + appDir + "\" >nul 2>nul",
+                "del /f /q \"" + script + "\" >nul 2>nul"
+            });
+            File.WriteAllText(script, commands);
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c \"" + script + "\"") { CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
+        }
+    }
+
     internal static class NativeMethods
     {
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_SHOWWINDOW = 0x0040;
+        public const int GWL_EXSTYLE = -20;
+        public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WM_DISPLAYCHANGE = 0x007E;
         private static IntPtr workerW = IntPtr.Zero;
 
         public delegate bool EnumWindowsProc(IntPtr topHandle, IntPtr topParamHandle);
@@ -419,6 +478,9 @@ namespace TurboWallpaper
         [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
         [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SetParent(IntPtr child, IntPtr newParent);
         [DllImport("user32.dll", SetLastError = true)] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll", SetLastError = true)] public static extern int GetWindowLong(IntPtr hWnd, int index);
+        [DllImport("user32.dll", SetLastError = true)] public static extern int SetWindowLong(IntPtr hWnd, int index, int newLong);
+        [DllImport("psapi.dll")] private static extern int EmptyWorkingSet(IntPtr processHandle);
 
         public static IntPtr GetWorkerW()
         {
@@ -436,6 +498,18 @@ namespace TurboWallpaper
             }, IntPtr.Zero);
 
             return workerW == IntPtr.Zero ? progman : workerW;
+        }
+
+        public static void TrimWorkingSet()
+        {
+            try
+            {
+                EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+            }
+            catch
+            {
+                // Best-effort memory trimming only.
+            }
         }
     }
 }
