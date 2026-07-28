@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>TurboWallpaper</AssemblyName>
+    <RootNamespace>TurboWallpaper</RootNamespace>
+    <ApplicationIcon />
+    <Copyright>Copyright © 2026 Turbowallpaper™. All rights reserved.</Copyright>
+    <Company>Turbowallpaper</Company>
+    <Product>TurboWallpaper</Product>
+  </PropertyGroup>
+</Project>
