@@ -27,6 +27,7 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"
 
 [Run]
@@ -37,3 +38,8 @@ Filename: "taskkill"; Parameters: "/IM TurboWallpaper.exe /F"; Flags: runhidden
 
 [Registry]
 Root: HKCU; Subkey: "Software\Turbowallpaper\TurboWallpaper"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+
+[UninstallDelete]
+Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
+Type: files; Name: "{app}\TurboWallpaper.ps1"
+Type: filesandordirs; Name: "{app}"
