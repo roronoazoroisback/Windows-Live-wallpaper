@@ -1,91 +1,78 @@
 # TurboWallpaper™
 
-TurboWallpaper is a native Windows background app from **Turbowallpaper** that places an image, GIF, MP4, or WMV wallpaper behind the desktop icons while keeping the taskbar and desktop apps usable.
+TurboWallpaper is a lightweight Windows live wallpaper script from **Turbowallpaper**. It runs in the background and can place an image, GIF, MP4, or WMV wallpaper behind the desktop icons.
 
 Copyright © 2026 Turbowallpaper™. All rights reserved.
 
-## What changed from a script runner
-
-- TurboWallpaper now builds and installs as `TurboWallpaper.exe`, a real Windows Forms background application.
-- The setup starts the installed executable directly, so closing the installer or command prompt does **not** close the wallpaper.
-- The app stays available from the Windows system tray for settings, restart, library access, and exit.
-- Startup launch uses the Windows `Run` registry key to start the installed executable as a background app.
-
 ## Features
 
-- Select `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.mp4`, or `.wmv` files from the local library or any folder.
-- Minimal settings UI for wallpaper selection, resolution preset, scale/aspect ratio, lightweight video upscaling, visual effect, and startup launch.
-- Uses the Windows desktop `WorkerW` layer so desktop icons and normal application windows remain on top.
-- Does not hide or cover the Windows taskbar.
-- Single-instance tray app to prevent multiple wallpaper engines from stacking.
-- Lightweight design using Windows Forms and native Windows browser/media components rather than a bundled browser runtime.
-- Optional low-resolution video smoothing and CSS-based Vivid/Cinema/Glow effects that avoid extra decoding buffers or heavy image-processing libraries.
+- Select wallpaper files from a local library or any folder.
+- Supports `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.mp4`, and `.wmv`.
+- Minimal UI with only wallpaper selection, resolution preset, scale/aspect ratio, and startup launch.
+- Designed to stay lightweight by using built-in Windows PowerShell, .NET WinForms, and native Windows browser/media components instead of bundling a heavy runtime.
+- Optional Windows startup shortcut launches the optimized background runner with a hidden PowerShell window.
 
-> Memory use depends on the chosen media, codec, resolution, GPU/driver, and Windows media stack. The enhancement controls are CSS/browser-compositor based, so they are much lighter than CPU frame processing, but very large GIFs and high-resolution videos can still exceed 20-30 MB because decoder buffers are controlled by Windows.
+> Memory use depends on the selected media file, decoder, resolution, and Windows version. Small images/GIFs are usually lightest; high-resolution video can exceed 30 MB because Windows media decoding allocates memory outside the script.
 
 ## Requirements
 
 - Windows 10 or Windows 11.
-- .NET Framework 4.8 runtime.
-- To build from source during setup: .NET SDK or Visual Studio Build Tools/MSBuild.
+- Windows PowerShell 5.1.
+- Built-in Windows media/browser components enabled for MP4/WMV live wallpapers.
 
-## Setup and install
+## Install
 
 1. Download or clone this repository.
-2. Double-click:
-
-   ```text
-   setup\Setup-TurboWallpaper.cmd
-   ```
-
-   Or run the installer manually:
+2. Double-click `setup\Setup-TurboWallpaper.cmd`, or run the PowerShell installer manually:
 
    ```powershell
    .\setup\Install-TurboWallpaper.ps1
    ```
 
-3. The installer builds `TurboWallpaper.exe` if needed, copies it to `%LOCALAPPDATA%\TurboWallpaper`, creates Start Menu/Desktop shortcuts, and launches the app.
-4. Closing the setup command window after installation will not close TurboWallpaper because the installed executable is a separate background app.
+3. Open **TurboWallpaper** from the desktop or Start Menu shortcut.
+4. Click **Open library** to add wallpaper files to `%LOCALAPPDATA%\TurboWallpaper\Library`, or click **Select wallpaper** to choose any supported file.
+5. Pick a scale/aspect mode:
+   - **Fill**: optimized default that preserves aspect ratio and fills the screen.
+   - **Fit**: preserves aspect ratio and shows the entire file.
+   - **Stretch**: fills the screen without preserving aspect ratio.
+   - **Center**: centers the file without scaling.
+6. Choose a resolution preset if desired. **Auto** is recommended for best performance.
+7. Enable **Launch optimized wallpaper at Windows startup** if you want TurboWallpaper to start automatically.
+8. Click **Save and run**.
 
-## Using TurboWallpaper
+## Run manually
 
-1. Open **TurboWallpaper** from the desktop shortcut, Start Menu shortcut, or system tray icon.
-2. Click **Open library** to add wallpaper files to `%LOCALAPPDATA%\TurboWallpaper\Library`, or click **Select** to choose any supported file.
-3. Choose a scale/aspect mode:
-   - **Fill**: fills the wallpaper area while preserving video aspect ratio.
-   - **Fit**: shows the full video without cropping.
-   - **Stretch**: fills the wallpaper area without preserving aspect ratio.
-   - **Center**: centers images without scaling.
-4. Choose a video effect:
-   - **None**: lowest overhead.
-   - **Vivid**: small contrast/saturation lift.
-   - **Cinema**: slightly deeper contrast with a subtle vignette overlay.
-   - **Glow**: brighter pop with a very light compositor drop shadow.
-5. Enable **Upscale low-resolution videos with browser smoothing** if smaller videos look blocky on larger displays.
-6. Choose a resolution preset. **Auto** is recommended because it uses the primary display bounds.
-7. Enable **Start TurboWallpaper with Windows as a background app** to launch at sign-in.
-8. Click **Save & run**.
-
-## System tray
-
-Right-click the tray icon to:
-
-- Open **Settings**.
-- **Restart wallpaper** after replacing a file.
-- **Open library**.
-- **Exit** the background app.
-
-## Build manually
+Configure the wallpaper:
 
 ```powershell
-.\setup\Build-TurboWallpaper.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TurboWallpaper.ps1 -Configure
 ```
 
-The output is written to:
+Run the wallpaper in the background:
 
-```text
-dist\TurboWallpaper\TurboWallpaper.exe
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File .\TurboWallpaper.ps1 -Run
 ```
+
+Enable startup launch:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TurboWallpaper.ps1 -InstallStartup
+```
+
+Disable startup launch:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TurboWallpaper.ps1 -RemoveStartup
+```
+
+## Performance tips
+
+- Prefer 1080p MP4 files encoded with hardware-friendly H.264 for best performance.
+- Avoid very large GIF files; GIF playback can use more CPU than video.
+- Use **Auto** resolution and **Fill** scaling for the best balance of quality and speed.
+- Keep wallpaper files local rather than on a network drive.
+- Close other wallpaper apps before starting TurboWallpaper.
 
 ## Uninstall
 
@@ -95,14 +82,11 @@ Run:
 .\setup\Uninstall-TurboWallpaper.ps1
 ```
 
-This stops the app, removes the startup registry entry, deletes shortcuts, and removes `%LOCALAPPDATA%\TurboWallpaper`.
+This removes the installed app files, desktop shortcut, Start Menu shortcut, and startup shortcut.
 
 ## Files
 
-- `src/TurboWallpaper/TurboWallpaper.csproj` - Windows Forms project for the native app.
-- `src/TurboWallpaper/Program.cs` - tray app, settings UI, lightweight video upscaling/effects, desktop wallpaper host, startup registration, and config logic.
-- `setup/Build-TurboWallpaper.ps1` - build script for `TurboWallpaper.exe`.
-- `setup/Install-TurboWallpaper.ps1` - setup script that builds if needed, installs files, creates shortcuts, and launches the app.
+- `TurboWallpaper.ps1` - main live wallpaper app and settings UI.
 - `setup/Setup-TurboWallpaper.cmd` - one-click setup launcher.
+- `setup/Install-TurboWallpaper.ps1` - setup script that installs the app and shortcuts.
 - `setup/Uninstall-TurboWallpaper.ps1` - uninstall script.
-- `setup/TurboWallpaper.iss` - optional Inno Setup definition for producing `TurboWallpaperSetup.exe` after publishing.

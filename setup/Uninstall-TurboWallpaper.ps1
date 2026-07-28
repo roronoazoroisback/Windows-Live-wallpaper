@@ -10,10 +10,10 @@ $StartupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) "$AppName
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
 $StartMenuDir = Join-Path ([Environment]::GetFolderPath('Programs')) $AppName
 
-Get-CimInstance Win32_Process -Filter "Name = 'TurboWallpaper.exe'" -ErrorAction SilentlyContinue |
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*$AppName*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $AppName -Force -ErrorAction SilentlyContinue
 Remove-Item -Path $StartupShortcut, $DesktopShortcut -Force -ErrorAction SilentlyContinue
 Remove-Item -Path $StartMenuDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
